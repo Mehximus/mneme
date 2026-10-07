@@ -410,6 +410,9 @@ def main(argv=None):
         state = Path(config['state'])
         directory = vault / '.claude/scripts'
         sys.path.insert(0, str(directory))
+        if argv and argv[0] == 'mcp':
+            import mneme_v3_mcp
+            return mneme_v3_mcp.serve(vault)
         if argv and argv[0] in ('update', 'rollback', 'recover'):
             import argparse
             import mneme_v3_update as updater
