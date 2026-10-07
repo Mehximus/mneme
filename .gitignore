@@ -9,3 +9,4 @@ __pycache__/
 
 # Yerel release çıktıları GitHub Release varlığı olarak yayınlanır
 release/
+dist/
