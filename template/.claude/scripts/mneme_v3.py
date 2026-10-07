@@ -567,6 +567,35 @@ class MemoryStore:
             result["truncated"] = True
         return result
 
+    # Lexical ranking for explicit searches: BM25-style idf with length normalization over
+    # the note vocabulary (term presence, not counts), plus a boost for title/alias hits so
+    # a short note that is about the query beats a long note that merely mentions it.
+    BM25_K1 = 1.2
+    BM25_B = 0.75
+    TITLE_BOOST = 2.0
+
+    def _bm25_scores(self, ranked, terms, vocabularies, titles):
+        if not ranked:
+            return {}
+        total = len(vocabularies)
+        average = sum(len(v) for v in vocabularies.values()) / total or 1.0
+        frequency = {}
+        for vocabulary in vocabularies.values():
+            for token in terms & vocabulary:
+                frequency[token] = frequency.get(token, 0) + 1
+        scores = {}
+        for shared_count, record in ranked:
+            vocabulary = vocabularies.get(record["id"], set())
+            norm = 1 - self.BM25_B + self.BM25_B * len(vocabulary) / average
+            saturation = (self.BM25_K1 + 1) / (1 + self.BM25_K1 * norm)
+            title = titles.get(record["id"], set())
+            score = 0.0
+            for token in terms & vocabulary:
+                idf = math.log(1 + (total - frequency[token] + 0.5) / (frequency[token] + 0.5))
+                score += idf * saturation * (self.TITLE_BOOST if token in title else 1.0)
+            scores[record["id"]] = score
+        return scores
+
     def _strict_rank(self, ranked, terms, vocabularies):
         """Keep only meaningful lexical matches; see STRICT_* for the calibrated rules."""
         frequency = {}
@@ -656,6 +685,7 @@ class MemoryStore:
         scoped_listing = project is not None and bool(query_tokens & project_tokens) and not (query_tokens - STOPWORDS - project_tokens)
         ranked = []
         vocabularies = {}
+        titles = {}
         for record in eligible:
             if record["id"] in superseded:
                 continue
@@ -670,6 +700,7 @@ class MemoryStore:
             alias_text = " ".join(a[:160] for a in aliases[:32] if isinstance(a, str))
             vocabulary = _tokens(record["text"] + " " + _json(record["facts"]) + " " + str(record.get("title", "")) + " " + alias_text) - STOPWORDS
             vocabularies[record["id"]] = vocabulary
+            titles[record["id"]] = _tokens(str(record.get("title", "")) + " " + alias_text) - STOPWORDS
             score = len(terms & vocabulary)
             if score or scoped_listing or snapshot:
                 ranked.append((score, record))
@@ -677,7 +708,8 @@ class MemoryStore:
             ranked = self._strict_rank(ranked, terms, vocabularies)
         else:
             ranked.sort(key=lambda item: (item[1].get("updated_at", ""), item[1]["id"]), reverse=True)
-            ranked.sort(key=lambda item: -item[0])
+            bm25 = self._bm25_scores(ranked, terms, vocabularies, titles)
+            ranked.sort(key=lambda item: -bm25[item[1]["id"]])
         if candidate_only:
             return [record for _, record in ranked[:limit]]
         return pack_context([record for _, record in ranked], limit, budget_chars, stale_count)
