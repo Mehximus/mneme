@@ -8,7 +8,7 @@ Claude Code, Codex veya Google Antigravity ile kullanabileceğin yerel ikinci be
 
 Python **3.11 veya üzeri** yeterli. Git, pip, Mem0 hesabı, API anahtarı veya sürekli açık sunucu gerekmez. Kullandığın AI istemcisinin kendi kurulumu ve hesabı ayrı olarak gerekir.
 
-> **V3.9.0:** Arama sıralaması artık kısa ve konuyla ilgili notu öne alıyor (BM25 tarzı; Türkçe testte ilk sırada doğru not %70 → %100). Yeni `note-edit` komutu ve `mneme.py mcp` ile Claude Desktop, Cursor gibi hook'suz istemciler de Mneme'yi kullanabiliyor. Mevcut kurulumda vault içinde `python3 mneme.py update` çalıştır. [Sürüm notları](docs/v3/releases/3.9.0.md) · [MCP rehberi](docs/v3/MCP.md) · [Güncelleme rehberi](docs/v3/UPDATE.md).
+> **V3.9.1:** Kaldırma artık bölüm bazlı: `--uninstall` yalnız Mneme'nin bloğunu ve kancalarını çıkarır, senin kurallarına ve kancalarına dokunmaz; `--plan-uninstall` önce ne olacağını gösterir. 3.9.0 ile gelen BM25 arama, `note-edit` ve `mneme.py mcp` duruyor. Mevcut kurulumda vault içinde `python3 mneme.py update` çalıştır. [Sürüm notları](docs/v3/releases/3.9.1.md) · [MCP rehberi](docs/v3/MCP.md) · [Güncelleme rehberi](docs/v3/UPDATE.md).
 
 ## En kolay kurulum: bir klasör, bir mesaj
 
