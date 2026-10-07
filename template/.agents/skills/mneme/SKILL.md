@@ -108,6 +108,14 @@ Yeni `notes/` veya `knowledge/` kaydı için `python3 mneme.py note-create --fil
 
 Kullanıcının başka bir klasör düzeni varsa onu koruyarak normal dosya araçlarıyla yazabilirsin; aynı adı taşıyan mevcut notu yeni not sanıp ezme.
 
+Var olan bir notun gövdesini değiştirmek için (Last-Session kartı, Threads, Kurallar gibi) kabukla dosya yazmak yerine `python3 mneme.py note-edit --file EDIT_JSON` kullan. UTF-8 ve satır sonu korunur, başlık (frontmatter) baytına dokunulmaz, görev/receipt/üretilmiş görünüm reddedilir:
+
+```json
+{"source":"🔮 850-Companion/Last-Session.md","op":"upsert_card","text":"## 2026-10-07 20:00 · etiket · abcd1234\n- Ne yaptık: ..."}
+```
+
+`op` değerleri: `append` (sona ekle), `replace_section` (`heading` ile verilen bölümü değiştir; yoksa `"create":true` ile ekle), `upsert_card` (metnin ilk satırı `##` başlığı; `key` yoksa başlığın son ` · ` parçası anahtardır; kart varsa yerinde yenilenir, yoksa en üste girer).
+
 Genel notlar frontmatter olmadan da indekslenir. Kalıcı karar veya öğrenimde `kind: fact` kullanabilir, dayandığı kaynakları notun gövdesinde bağlayabilirsin. Kullanıcının söylediği ile bağımsız doğruladığın sonucu ayır. Var olan dosyanın gövdesini ve ilgisiz alanlarını koru.
 
 Kaynak yazıldıktan sonra `python3 mneme.py sync` çalıştır. Görev değişikliğinde mevcut revision'ı oku ve `python3 mneme.py task-update --file PATCH_JSON` kullan. Dosya şeması:

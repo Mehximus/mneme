@@ -276,6 +276,80 @@ def _fact_conflicts(records):
     return notices
 
 
+NL = chr(10)
+
+
+def _headings(lines):
+    """(index, level, title) of Markdown headings, ignoring fenced code."""
+    found, fence = [], None
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith(('```', '~~~')):
+            marker = stripped[:3]
+            fence = None if fence == marker else (fence or marker)
+            continue
+        if fence:
+            continue
+        match = re.match(r'(#{1,6})[ \t]+(.*?)\s*$', line)
+        if match:
+            found.append((index, len(match[1]), match[2]))
+    return found
+
+
+def _section_end(headings, position, total):
+    level = headings[position][1]
+    for index, other_level, _ in headings[position + 1:]:
+        if other_level <= level:
+            return index
+    return total
+
+
+def edit_body(body, op, text, heading=None, key=None, create=False):
+    """Pure body edit for note-edit: append, replace_section or upsert_card. Returns new body."""
+    text = text.strip(NL)
+    if op == 'append':
+        base = body.rstrip(NL)
+        return (base + NL * 2 if base else '') + text + NL
+    lines = body.split(NL)
+    if lines and lines[-1] == '':
+        lines.pop()
+    headings = _headings(lines)
+    if op == 'replace_section':
+        if not isinstance(heading, str) or not heading.strip():
+            raise ValueError('replace_section needs heading')
+        match = re.match(r'(#*)[ \t]*(.*?)\s*$', heading)
+        want_level, want_title = len(match[1]), match[2]
+        hit = next((i for i, (_, level, title) in enumerate(headings)
+                    if title == want_title and (not want_level or level == want_level)), None)
+        if hit is None:
+            if not create:
+                raise ValueError('heading not found: ' + heading.strip())
+            level = want_level or 2
+            return edit_body(body, 'append', '#' * level + ' ' + want_title + NL + NL + text)
+        start, end = headings[hit][0], _section_end(headings, hit, len(lines))
+        new = lines[:start + 1] + [''] + text.split(NL) + ([''] if end < len(lines) else [])
+        return NL.join(new + lines[end:]) + NL
+    if op == 'upsert_card':
+        card = text.split(NL)
+        match = re.match(r'(#{1,6})[ \t]+(.*?)\s*$', card[0])
+        if not match:
+            raise ValueError('upsert_card text must start with a heading line')
+        level = len(match[1])
+        key = key or match[2].split(' \u00b7 ')[-1].strip()
+        if not key:
+            raise ValueError('upsert_card needs key')
+        hit = next((i for i, (_, lvl, title) in enumerate(headings) if lvl == level and key in title), None)
+        if hit is not None:
+            start, end = headings[hit][0], _section_end(headings, hit, len(lines))
+            tail = [''] + lines[end:] if end < len(lines) else []
+            return NL.join(lines[:start] + card + tail) + NL
+        first = next((index for index, lvl, _ in headings if lvl == level), None)
+        if first is None:
+            return edit_body(body, 'append', text)
+        return NL.join(lines[:first] + card + [''] + lines[first:]) + NL
+    raise ValueError('unknown note-edit op: ' + str(op))
+
+
 def render(metadata, body):
     return '---\n' + json.dumps(metadata, ensure_ascii=False, indent=2) + '\n---\n' + body
 
@@ -813,6 +887,53 @@ class SyncEngine:
         result = self.sync()
         return {'status': result['status'], 'watermark_cleared': cleared, 'conflicts': result['conflicts'],
                 'warnings': result['warnings']}
+
+    NOTE_EDIT_REFUSED = ('receipts/', 'tasks/', 'daily/v3/', 'knowledge/v3/')
+
+    def note_edit(self, source, op, text, heading=None, key=None, create=False):
+        """Edit the body of an existing Markdown source; the header bytes are never rewritten.
+
+        ops: append, replace_section (heading), upsert_card (heading line in text + key).
+        Tasks, receipts and generated views have their own commands and are refused."""
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError('note-edit text required')
+        if text.lstrip().startswith('---'):
+            raise ValueError('text must be body only')
+        if not isinstance(source, str) or not source.endswith('.md') or source.startswith(self.NOTE_EDIT_REFUSED):
+            raise ValueError('note-edit covers existing notes, not tasks, receipts or generated views')
+        text, redacted = self._protect(text)
+        with self.store._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            path = self._path(source, existing=True)
+            raw = path.read_bytes()
+            old_hash = _hash(raw)
+            full = raw.decode('utf-8')
+            crlf = chr(13) + chr(10) in full
+            full = full.replace(chr(13) + chr(10), NL)
+            lines = full.splitlines(keepends=True)
+            header = ''
+            body = full
+            if lines and lines[0].strip() == '---':
+                end = next((i for i in range(1, len(lines)) if lines[i].strip() == '---'), None)
+                if end is None:
+                    raise ValueError('unterminated frontmatter')
+                header, body = ''.join(lines[:end + 1]), ''.join(lines[end + 1:])
+                metadata, _ = parse(full)
+                if metadata.get('generated') or metadata.get('kind') in ('task', 'receipt'):
+                    raise ValueError('note-edit covers existing notes, not tasks, receipts or generated views')
+            new_body = edit_body(body, op, text, heading, key, create)
+            if new_body == body:
+                return {'status': 'unchanged', 'source': source}
+            intended = header + new_body
+            if crlf:
+                intended = intended.replace(NL, chr(13) + chr(10))
+            self._intent(source, old_hash, intended, 'note')
+        result = self.sync()
+        if result['conflicts']:
+            raise RevisionConflict('source projection conflict')
+        self._record_redactions(redacted)
+        return {'status': 'succeeded', 'source': source, 'op': op, 'redacted': redacted,
+                'warnings': result['warnings'], 'conflicts': result['conflicts']}
 
     def supersede(self, new_ref, old_ref):
         """Mark an older note as replaced by a newer one: the newer source lists the old id.

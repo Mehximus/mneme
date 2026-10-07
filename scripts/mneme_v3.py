@@ -277,6 +277,8 @@ def parser():
     ingest.add_argument("--file", default="-", help="JSON input path, or - for stdin")
     note = sub.add_parser("note-create", help="Create a semantic Markdown source without overwriting")
     note.add_argument("--file", default="-", help="JSON {source, text, metadata}")
+    edit = sub.add_parser("note-edit", help="Edit an existing note body: append, replace_section or upsert_card")
+    edit.add_argument("--file", default="-", help="JSON {source, op, text, heading?, key?, create?}")
     sup = sub.add_parser("supersede", help="Mark an older note as replaced by a newer one; nothing is deleted")
     sup.add_argument("--new", required=True, help="Newer record id or vault-relative source")
     sup.add_argument("--old", required=True, help="Older record id or vault-relative source")
@@ -341,7 +343,7 @@ def main(argv=None):
         # The advisor switch reads and writes one small file; it needs no index or sync engine.
         engine = load_engine() if args.command != "jev" else None
         store = engine.MemoryStore(state, vault, read_only=read_only_context) if engine else None
-        sync = load_sync()(vault, state) if args.command in ("sync", "recap", "receipt", "task-update", "note-create", "supersede", "task-create", "context", "jev-review", "jev-answer", "jev-memory", "history") and not read_only_context else None
+        sync = load_sync()(vault, state) if args.command in ("sync", "recap", "receipt", "task-update", "note-create", "note-edit", "supersede", "task-create", "context", "jev-review", "jev-answer", "jev-memory", "history") and not read_only_context else None
         if args.command == "init":
             result = {"initialized": True, "state": str(state), "network": False,
                       "hooks_installed": False, "optional_provider": None}
@@ -644,6 +646,9 @@ def main(argv=None):
         elif args.command == "note-create":
             payload = read_json(args.file)
             result = sync.note_create(payload['source'], payload['text'], payload.get('metadata'))
+        elif args.command == "note-edit":
+            payload = read_json(args.file)
+            result = sync.note_edit(payload["source"], payload["op"], payload["text"], payload.get("heading"), payload.get("key"), bool(payload.get("create")))
         elif args.command == "supersede":
             result = sync.supersede(args.new, args.old)
         elif args.command == "task-create":
