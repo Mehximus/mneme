@@ -193,6 +193,83 @@ def semantic_unchanged(name, baseline, current, previous, kept=(), user_excluded
     return False
 
 
+def _strip_hooks_by(node, is_ours):
+    """(cleaned copy, removed count) with every hook entry that is_ours(entry) dropped."""
+    removed = 0
+    if isinstance(node, list):
+        kept = []
+        for item in node:
+            if isinstance(item, dict) and "command" in item and is_ours(item):
+                removed += 1
+                continue
+            cleaned, count = _strip_hooks_by(item, is_ours)
+            removed += count
+            if isinstance(item, dict) and isinstance(item.get("hooks"), list) and not cleaned.get("hooks"):
+                continue  # a matcher group left without hooks
+            kept.append(cleaned)
+        return kept, removed
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            out[key], count = _strip_hooks_by(value, is_ours)
+            removed += count
+        return {k: v for k, v in out.items() if not (k in ("PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "SessionEnd") and v == [])}, removed
+    return node, 0
+
+
+HOOK_FILES = (".claude/settings.local.json", ".claude/settings.json", ".codex/hooks.json")
+
+
+def plan_uninstall(vault, manifest):
+    """Decide, without touching anything, how each managed file leaves.
+
+    A file the user never touched is restored (or removed). A shared file that gained user
+    content next to Mneme's part (a router with its own rules, a settings file with its own
+    hooks) loses only Mneme's part. Any other change is a conflict and stops the uninstall."""
+    actions, conflicts, writes = [], [], []
+    for name, item in manifest["files"].items():
+        path = Path(vault) / name
+        current = path.read_bytes() if path.exists() else None
+        baseline = base64.b64decode(item["installed_content"]) if item.get("installed_content") else None
+        original = base64.b64decode(item["original"]) if item["original"] is not None else None
+        if current is not None and (digest(current) == item["installed_hash"] or line_endings_only(baseline, current)):
+            actions.append({"file": name, "action": "remove" if original is None else "restore"})
+            writes.append((actions[-1], original))
+            continue
+        if current is None:
+            conflicts.append({"file": name, "reason": conflict_case(current)})
+            continue
+        text = current.decode("utf-8", errors="replace")
+        if name in ("AGENTS.md", "CLAUDE.md") and START in text and text.find(END) > text.find(START):
+            start, end = text.find(START), text.find(END) + len(END)
+            before, after = text[:start].rstrip("\n"), text[end:].strip("\n")
+            kept = "\n\n".join(part for part in (before, after) if part)
+            if kept:
+                kept += "\n"
+            only_import = kept.replace("\r\n", "\n").encode("utf-8") == CLAUDE_IMPORT
+            actions.append({"file": name, "action": "remove" if (original is None and (not kept or only_import)) else "strip-block"})
+            writes.append((actions[-1], None if actions[-1]["action"] == "remove" else kept.encode("utf-8")))
+            continue
+        if name in HOOK_FILES:
+            try:
+                data = json.loads(text)
+                # Windows hooks are encoded PowerShell, so ownership is what the install recorded.
+                recorded = set()
+                if baseline is not None:
+                    _strip_hooks_by(json.loads(baseline), lambda entry: recorded.add(entry.get("command", "")) or False)
+                cleaned, removed = _strip_hooks_by(data, lambda entry: managed_handler(entry, recorded))
+            except (ValueError, TypeError):
+                conflicts.append({"file": name, "reason": "content differs"})
+                continue
+            if removed:
+                empty = original is None and cleaned in ({}, {"hooks": {}})
+                actions.append({"file": name, "action": "remove" if empty else "strip-hooks"})
+                writes.append((actions[-1], None if empty else (json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n").encode("utf-8")))
+                continue
+        conflicts.append({"file": name, "reason": conflict_case(current)})
+    return {"actions": actions, "conflicts": conflicts, "writes": writes}
+
+
 def _install(vault, state, uninstall=False, plan_only=False, version="3.0.0", legacy_hashes=None,
              legacy_skill_hashes=None, migration=None, migration_plan=None, accept_customized=(),
              keep_customized=(), exclude_components=(), include_components=()):
@@ -212,22 +289,31 @@ def _install(vault, state, uninstall=False, plan_only=False, version="3.0.0", le
     manifest_path = state / "v3-install.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"files": {}}
     if uninstall:
-        for name, item in manifest["files"].items():
-            path = vault / name
-            current = path.read_bytes() if path.exists() else None
-            if current is None or digest(current) != item["installed_hash"]:
-                baseline = base64.b64decode(item["installed_content"]) if item.get("installed_content") else None
-                if not line_endings_only(baseline, current):
-                    raise ValueError("Uninstall conflict: managed file changed; preserve and reconcile " + name +
-                                     " (" + conflict_case(current) + ")")
-        for name, item in manifest["files"].items():
-            path = vault / name
-            if item["original"] is None:
-                path.unlink()
+        plan = plan_uninstall(vault, manifest)
+        if plan_only:
+            return {"status": "plan", "actions": plan["actions"], "conflicts": plan["conflicts"]}
+        if plan["conflicts"]:
+            first, rest = plan["conflicts"][0], plan["conflicts"][1:]
+            message = "Uninstall conflict: managed file changed; preserve and reconcile " + first["file"] + " (" + first["reason"] + ")"
+            if rest:
+                message += "; also: " + ", ".join(item["file"] + " (" + item["reason"] + ")" for item in rest)
+            raise ValueError(message)
+        backup = state / "uninstall-backup"
+        for action in plan["actions"]:
+            path = vault / action["file"]
+            if action["action"] in ("strip-block", "strip-hooks") and path.exists():
+                target = backup / action["file"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
+        for action, content in plan["writes"]:
+            path = vault / action["file"]
+            if content is None:
+                path.unlink(missing_ok=True)
             else:
-                atomic(path, base64.b64decode(item["original"]))
+                atomic(path, content)
         manifest_path.unlink(missing_ok=True)
-        return {"status": "uninstalled", "restored": len(manifest["files"])}
+        return {"status": "uninstalled", "restored": len(manifest["files"]),
+                "sections_stripped": [a["file"] for a in plan["actions"] if a["action"] in ("strip-block", "strip-hooks")]}
     planned = {}
     modes = {}
     if legacy_hashes is None:
@@ -853,6 +939,8 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--uninstall", action="store_true")
     mode.add_argument("--plan", action="store_true", help="report what an install would do; change nothing")
+    mode.add_argument("--plan-uninstall", action="store_true",
+                      help="report how each managed file would leave (restore, remove, or only Mneme's section stripped); change nothing")
     parser.add_argument("--accept-customized-legacy", action="append", default=[], metavar="PATH",
                         help="retire one named customized legacy runner (vault-relative); repeatable")
     parser.add_argument("--keep-customized-legacy", action="append", default=[], metavar="PATH",
@@ -882,11 +970,11 @@ def main():
             if args.plan:
                 print(json.dumps(migrated))
                 return 0
-        elif not args.uninstall and detect_avenox(args.vault) is not None:
+        elif not (args.uninstall or args.plan_uninstall) and detect_avenox(args.vault) is not None:
             raise ValueError("Avenox beyin install detected (.beyin-version). Preview with --from-avenox --plan, "
                              "then run with --from-avenox: it retires Avenox without touching your notes.")
-        result = install(args.vault, target_state, args.uninstall,
-                         plan_only=args.plan, accept_customized=accepted, keep_customized=kept,
+        result = install(args.vault, target_state, args.uninstall or args.plan_uninstall,
+                         plan_only=args.plan or args.plan_uninstall, accept_customized=accepted, keep_customized=kept,
                          exclude_components=excluded,
                          include_components=included)
         if migrated is not None:
@@ -899,6 +987,8 @@ def main():
                     atomic(watermark, jbytes(data))
             result = dict(result, from_avenox=migrated)
         print(json.dumps(plan_report(result) if args.plan else result))
+        if args.plan_uninstall and result.get("conflicts"):
+            return 1
     except Exception as exc:
         print(json.dumps({"error": type(exc).__name__, "message": str(exc)}), file=sys.stderr)
         return 1
