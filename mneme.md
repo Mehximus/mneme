@@ -96,6 +96,21 @@ kullanicinin acik onayini al ve ancak o zaman tek dosya icin
 `--accept-customized-legacy <vault-goreli-yol>` kullan. Toplu gecis yoktur. Ayrintilar:
 `https://github.com/Mehximus/mneme/blob/main/docs/v3/MIGRATION.md`
 
+Vault kokunde `.beyin-version` varsa bu bir Avenox beyin V3 kurulumudur. Installer onu
+`Unmanaged file conflict` diye reddeder; once onizle, sonra gec:
+
+```text
+<python> <gecici-paket>/scripts/install_v3.py --vault <mutlak-vault-yolu> --from-avenox --plan
+<python> <gecici-paket>/scripts/install_v3.py --vault <mutlak-vault-yolu> --from-avenox
+```
+
+`--from-avenox` Avenox'un kurdugu dosyalari manifestine gore geri alir; ayarlarda ve
+`CLAUDE.md`/`AGENTS.md` icinde yalniz Avenox kancalarini ve yonetilen blogu kaldirir, kullanici
+satirlari ve notlar oldugu gibi kalir. Dokunulan her dosya once state klasorundeki
+`avenox-migration-backup/` altina kopyalanir. Elle degistirilmis bir Avenox dosyasi varsa
+hicbir sey degistirmeden hata verir; o dosyayi silme, kullaniciya sor. Gecisten sonra
+`mneme.py sync --rebuild-receipts` gerekmez: eski makbuzlar uretilmis goruntulere otomatik girer.
+
 ### 3b. `.mneme-version` zaten `3.` ile basliyorsa: kurulu updater
 
 Mevcut V3 kurulumunda tercih edilen yol vault icindeki `mneme.py` updater'idir.

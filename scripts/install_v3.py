@@ -641,6 +641,159 @@ def package_defaults():
     return updater.validate_package(archive)[0]
 
 
+# --- Avenox migration -------------------------------------------------------------------
+# Avenox beyin V3 is the upstream of Mneme and shares its manifest format, but every file it
+# installed carries the old name (beyin.py, beyin_v3_*.py, .beyin-version). A plain install on
+# top of it stops with "Unmanaged file conflict". `--from-avenox` retires that install first:
+# stock files go back exactly as the manifest says, while the three files users really edit
+# (settings, hook files, CLAUDE.md/AGENTS.md) lose only the managed parts. User notes are never
+# read or moved. Every touched file is copied into <state>/avenox-migration-backup first.
+AVENOX_START, AVENOX_END = "<!-- beyin-v3:start -->", "<!-- beyin-v3:end -->"
+AVENOX_JSON_FILES = (".claude/settings.local.json", ".claude/settings.json", ".codex/hooks.json", ".agents/hooks.json")
+AVENOX_TEXT_FILES = ("CLAUDE.md", "AGENTS.md")
+AVENOX_NEEDLE = "beyin_v3"
+
+
+def detect_avenox(vault):
+    """The Avenox install state of a vault, or None when it holds none."""
+    vault = Path(vault).resolve()
+    if not (vault / ".beyin-version").exists() or (vault / ".mneme-version").exists():
+        return None
+    old_state = None
+    runtime = vault / ".beyin-runtime.json"
+    if runtime.exists():
+        try:
+            old_state = Path(json.loads(runtime.read_text(encoding="utf-8"))["state"])
+        except (OSError, ValueError, KeyError):
+            old_state = None
+    manifest = old_state / "v3-install.json" if old_state else None
+    return {"version": (vault / ".beyin-version").read_text(encoding="utf-8").strip(),
+            "state": old_state, "manifest": manifest if manifest and manifest.exists() else None}
+
+
+def _avenox_command(command):
+    """True when a hook command runs an Avenox script, plain or inside an -EncodedCommand."""
+    if not isinstance(command, str):
+        return False
+    if AVENOX_NEEDLE in command:
+        return True
+    for token in re.findall(r"[A-Za-z0-9+/=]{40,}", command):
+        try:
+            if AVENOX_NEEDLE in base64.b64decode(token).decode("utf-16-le", "ignore"):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _strip_avenox_hooks(node):
+    """(cleaned copy, removed count) with every hook entry that runs an Avenox script dropped."""
+    removed = 0
+    if isinstance(node, list):
+        kept = []
+        for item in node:
+            if isinstance(item, dict) and _avenox_command(item.get("command")):
+                removed += 1
+                continue
+            cleaned, count = _strip_avenox_hooks(item)
+            removed += count
+            if isinstance(item, dict) and isinstance(item.get("hooks"), list) and not cleaned.get("hooks"):
+                continue  # a matcher group left without hooks
+            kept.append(cleaned)
+        return kept, removed
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            out[key], count = _strip_avenox_hooks(value)
+            removed += count
+        return {k: v for k, v in out.items() if not (k in ("PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "SessionEnd") and v == [])}, removed
+    return node, 0
+
+
+def _strip_avenox_block(text):
+    start, end = text.find(AVENOX_START), text.find(AVENOX_END)
+    if start < 0 or end < start:
+        return text
+    before = text[:start].rstrip("\n")
+    after = text[end + len(AVENOX_END):].strip("\n")
+    return "\n\n".join(part for part in (before, after) if part) + "\n" if (before or after) else ""
+
+
+def plan_avenox_migration(vault, found):
+    """Decide, without touching anything, what retiring the Avenox install does to each file."""
+    manifest = json.loads(found["manifest"].read_text(encoding="utf-8"))
+    actions, conflicts = [], []
+    for name, item in sorted(manifest["files"].items()):
+        path = Path(vault) / name
+        if not path.exists():
+            continue
+        current = path.read_bytes()
+        unchanged = digest(current) == item["installed_hash"]
+        baseline = base64.b64decode(item["installed_content"]) if item.get("installed_content") else None
+        if unchanged or line_endings_only(baseline, current):
+            actions.append((name, "restore" if item["original"] is not None else "delete", item))
+        elif name in AVENOX_JSON_FILES:
+            actions.append((name, "strip-hooks", item))
+        elif name in AVENOX_TEXT_FILES:
+            actions.append((name, "strip-block", item))
+        else:
+            conflicts.append(name)
+    return actions, conflicts
+
+
+def migrate_from_avenox(vault, state, plan_only=False):
+    vault, state = Path(vault).resolve(), Path(state).resolve()
+    found = detect_avenox(vault)
+    if found is None:
+        raise ValueError("No Avenox install found: .beyin-version is missing or Mneme is already installed")
+    if found["manifest"] is None:
+        raise ValueError("Avenox install state not found; cannot tell which files it owns. Looked for "
+                         + str(found["state"] / "v3-install.json" if found["state"] else ".beyin-runtime.json"))
+    actions, conflicts = plan_avenox_migration(vault, found)
+    if conflicts:
+        raise ValueError("Avenox file changed by hand; preserve and reconcile before migrating: " + ", ".join(conflicts))
+    report = {"status": "plan" if plan_only else "migrated", "avenox_version": found["version"],
+              "restore": [n for n, a, _ in actions if a == "restore"],
+              "delete": [n for n, a, _ in actions if a == "delete"],
+              "strip_hooks": [n for n, a, _ in actions if a == "strip-hooks"],
+              "strip_block": [n for n, a, _ in actions if a == "strip-block"]}
+    if plan_only:
+        return report
+    backup = state / "avenox-migration-backup"
+    backup.mkdir(parents=True, exist_ok=True)
+    (backup / "v3-install.json").write_bytes(found["manifest"].read_bytes())
+    for name, _, _ in actions:
+        target = backup / "files" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((vault / name).read_bytes())
+    for name, action, item in actions:
+        path = vault / name
+        if action == "delete":
+            path.unlink()
+        elif action == "restore":
+            atomic(path, base64.b64decode(item["original"]))
+        elif action == "strip-hooks":
+            data = json.loads(path.read_text(encoding="utf-8"))
+            cleaned, _ = _strip_avenox_hooks(data)
+            atomic(path, (json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+        else:
+            cleaned = _strip_avenox_block(path.read_text(encoding="utf-8"))
+            if cleaned.strip():
+                atomic(path, cleaned.encode("utf-8"))
+            else:
+                path.unlink()
+    for folder in sorted((vault / p for p in (".claude/skills", ".agents/skills", ".claude/hermes-plugin", ".omp/hooks/pre",
+                                              ".opencode/plugins", ".codex")), reverse=True):
+        for leftover in sorted(folder.rglob("*"), reverse=True) if folder.is_dir() else []:
+            if leftover.is_dir() and not any(leftover.iterdir()):
+                leftover.rmdir()
+    (vault / ".beyin-version").unlink(missing_ok=True)
+    (vault / ".beyin-runtime.json").unlink(missing_ok=True)
+    report["backup"] = str(backup)
+    report["old_state"] = str(found["state"])
+    return report
+
+
 def install(vault, state, uninstall=False, plan_only=False, version=None, legacy_hashes=None,
             legacy_skill_hashes=None, accept_customized=(), keep_customized=(),
             exclude_components=(), include_components=()):
@@ -708,6 +861,8 @@ def main():
                         help="disable/exclude a managed component, skill, adapter, or launcher; repeatable")
     parser.add_argument("--include-component", action="append", default=[], metavar="COMPONENT",
                         help="re-enable a previously excluded component; repeatable")
+    parser.add_argument("--from-avenox", action="store_true",
+                        help="retire an Avenox beyin V3 install (notes untouched, backup kept in the state folder), then install Mneme")
     args = parser.parse_args()
     spec = importlib.util.spec_from_file_location("mneme_cli_defaults", ROOT / "scripts/mneme_v3.py")
     defaults = importlib.util.module_from_spec(spec); spec.loader.exec_module(defaults)
@@ -718,10 +873,31 @@ def main():
         kept = tuple(name.replace("\\", "/") for name in args.keep_customized_legacy)
         excluded = tuple(name.replace("\\", "/") for name in args.exclude_component)
         included = tuple(name.replace("\\", "/") for name in args.include_component)
-        result = install(args.vault, args.state or default_state(args.vault.resolve()), args.uninstall,
+        target_state = args.state or default_state(args.vault.resolve())
+        migrated = None
+        if args.from_avenox:
+            if args.uninstall:
+                raise ValueError("--from-avenox cannot be combined with --uninstall")
+            migrated = migrate_from_avenox(args.vault, target_state, plan_only=args.plan)
+            if args.plan:
+                print(json.dumps(migrated))
+                return 0
+        elif not args.uninstall and detect_avenox(args.vault) is not None:
+            raise ValueError("Avenox beyin install detected (.beyin-version). Preview with --from-avenox --plan, "
+                             "then run with --from-avenox: it retires Avenox without touching your notes.")
+        result = install(args.vault, target_state, args.uninstall,
                          plan_only=args.plan, accept_customized=accepted, keep_customized=kept,
                          exclude_components=excluded,
                          include_components=included)
+        if migrated is not None:
+            # Avenox receipts are V3 receipts, not V2 history: project them in the generated views.
+            watermark = Path(target_state) / "v2-migration.json"
+            if watermark.exists():
+                data = json.loads(watermark.read_text(encoding="utf-8"))
+                if data.get("historical_receipts"):
+                    data["historical_receipts"] = []
+                    atomic(watermark, jbytes(data))
+            result = dict(result, from_avenox=migrated)
         print(json.dumps(plan_report(result) if args.plan else result))
     except Exception as exc:
         print(json.dumps({"error": type(exc).__name__, "message": str(exc)}), file=sys.stderr)

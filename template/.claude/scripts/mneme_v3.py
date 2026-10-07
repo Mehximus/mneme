@@ -151,9 +151,12 @@ _VOICELESS = frozenset("cfhkpst")
 # possessive vowel, so "cobanin" reads as coban+in while "arabanin" reads as araba+n+in.
 _SUFFIXES = (
     ("imiz", 4, "consonant"), ("umuz", 4, "consonant"), ("iniz", 4, "consonant"), ("unuz", 4, "consonant"),
+    ("ndeki", 3, "vowel"), ("ndaki", 3, "vowel"), ("deki", 2, "voiced"), ("daki", 2, "voiced"),
+    ("teki", 2, "voiceless"), ("taki", 2, "voiceless"),
     ("nden", 5, "vowel"), ("ndan", 5, "vowel"),
     ("ten", 4, "voiceless"), ("tan", 4, "voiceless"), ("den", 4, "voiced"), ("dan", 4, "voiced"),
     ("nin", 5, "vowel"), ("nun", 5, "vowel"), ("nde", 5, "vowel"), ("nda", 5, "vowel"),
+    ("ni", 6, "vowel"), ("na", 6, "vowel"), ("ne", 6, "vowel"),
     ("miz", 4, "vowel"), ("muz", 4, "vowel"), ("niz", 4, "vowel"), ("nuz", 4, "vowel"),
     ("yla", 4, "vowel"), ("yle", 4, "vowel"),
     ("ler", 3, "any"), ("lar", 3, "any"),

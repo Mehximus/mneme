@@ -288,6 +288,23 @@ def receipt_day(created_at, zone=None):
         return None
 
 
+def _is_generated_view(path):
+    """True for a file whose JSON frontmatter says it is a generated receipt index."""
+    try:
+        head = path.read_text(encoding='utf-8').split('---', 2)
+        meta = json.loads(head[1]) if len(head) == 3 and head[0].strip() == '' else {}
+    except (OSError, UnicodeError, ValueError):
+        return False
+    return isinstance(meta, dict) and meta.get('generated') is True and meta.get('kind') == 'receipt-index'
+
+
+def _backup_view(engine, relative, path):
+    folder = engine.state / 'receipt-views-backup'
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    (folder / (relative.replace('/', '__') + '.' + stamp + '.bak')).write_bytes(path.read_bytes())
+
+
 def project_receipts(engine, db, warnings=None):
     _hash, atomic, render = engine.projection_helpers()
     db.execute('CREATE TABLE IF NOT EXISTS receipt_views(path TEXT PRIMARY KEY, hash TEXT NOT NULL)')
@@ -325,8 +342,14 @@ def project_receipts(engine, db, warnings=None):
         desired_hash = _hash(content)
         tracked = db.execute('SELECT hash FROM receipt_views WHERE path=?', (relative,)).fetchone()
         if old != desired_hash and old is not None and (not tracked or old != tracked[0]):
-            conflicts.append({'source': relative, 'reason': 'manual receipt view edit preserved'})
-            continue
+            if not tracked and _is_generated_view(path):
+                # A fresh state (new machine, reinstall, engine change) has no hash for a view a
+                # previous install generated. Such a file declares itself derived, so adopt it:
+                # keep the old bytes in state first, then let the projection rewrite it.
+                _backup_view(engine, relative, path)
+            else:
+                conflicts.append({'source': relative, 'reason': 'manual receipt view edit preserved'})
+                continue
         if old != desired_hash:
             # Recheck immediately before atomic replacement; remote writers still require reconciliation.
             if (_hash(path.read_bytes()) if path.exists() else None) != old:

@@ -234,6 +234,23 @@ def human_result(result, command, installed_version=None):
                   'pending': 'Bekleyen isler var.', 'needs_attention': 'Kontrol gerektiren bir sorun var.'}
         lines = ['Mneme ' + (installed_version or 'surumu bilinmiyor'), labels.get(status, 'Saglik kontrolu tamamlandi.'),
                  'Bekleyen is: ' + str(result.get('pending_events', 0))]
+        sync_tip = 'ayrinti: ' + ('py -3' if sys.platform == 'win32' else 'python3') + ' mneme.py sync'
+        for reason in result.get('attention_reasons') or []:
+            code = reason.get('code')
+            if code in ('sync_degraded', 'sync_conflict'):
+                shown = '; '.join(str(e.get('source')) + ' (' + str(e.get('reason')) + ')' for e in reason.get('examples') or [])
+                lines.append('Neden: kaynak esitleme ' + ('celiski' if code == 'sync_conflict' else 'uyari') + ' veriyor, ' +
+                             str(reason.get('count', 0)) + ' kayit' + (': ' + shown if shown else '') + ' (' + sync_tip + ').')
+            elif code == 'skill_conflicts':
+                lines.append('Neden: skill kopyalari ayristi: ' + ', '.join(reason.get('names') or []) + '.')
+            elif code == 'instruction_conflicts':
+                lines.append('Neden: ' + str(reason.get('count', 0)) + ' talimat dosyasinda V2 derleyici ifadesi var.')
+            elif code == 'hook_error':
+                lines.append('Neden: bir hook hata verdi (hook-error.json); ilgili istemcide hook calismiyor olabilir.')
+            elif code == 'task_completion':
+                lines.append('Neden: ' + str(reason.get('count', 0)) + ' gorevin tamamlanma kaniti eksik.')
+            elif code == 'validity':
+                lines.append('Neden: ' + str(reason.get('count', 0)) + ' reddedilmis kayit baglamda hala gorunuyor.')
         for name, details in result.get('lifecycle', {}).items():
             lines.append(name + ': ' + ('olay goruldu' if details.get('status') == 'observed_metadata' else 'henuz dogrulanmadi'))
         jev = result.get('jev') or {}
@@ -247,7 +264,8 @@ def human_result(result, command, installed_version=None):
         if result.get('secrets_redacted'):
             lines.append('Sir suzgeci ' + str(result['secrets_redacted']) + ' eslesmeyi [REDACTED] olarak yazdi.')
         cov = result.get('receipt_coverage')
-        if isinstance(cov, dict) and cov.get('total', 0) > 0:
+        # A handful of sessions makes a percentage meaningless (a fresh install reads 0%).
+        if isinstance(cov, dict) and cov.get('total', 0) >= 3:
             ratio = cov.get('ratio')
             pct = int(round(ratio * 100)) if ratio is not None else 0
             d7 = cov.get('last_7d', {})

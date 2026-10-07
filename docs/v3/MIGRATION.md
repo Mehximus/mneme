@@ -184,3 +184,31 @@ new-only outcome projections, manual-view conflicts, note-create refusal to
 overwrite, and receipt-gap closure. Actual V2 workers, external schedules and
 client trust still require environment-specific validation. A green migration
 unit test is not evidence that every external worker has stopped.
+
+## Migrating from Avenox beyin V3
+
+Mneme forked Avenox İkinci Beyin V3 and keeps its manifest format, but an Avenox vault holds
+files under the old name (`beyin.py`, `.claude/scripts/beyin_v3_*.py`, `.beyin-version`,
+`.beyin-runtime.json`). A plain install stops with `Unmanaged file conflict`, and
+`--uninstall` stops as soon as you edited `.claude/settings.local.json` or `CLAUDE.md` after the
+Avenox install. `--from-avenox` handles both:
+
+```text
+python3 scripts/install_v3.py --vault "/absolute/path/to/vault" --from-avenox --plan
+python3 scripts/install_v3.py --vault "/absolute/path/to/vault" --from-avenox
+```
+
+- Stock Avenox files go back exactly as the Avenox state manifest records them.
+- In `.claude/settings.local.json`, `.claude/settings.json`, `.codex/hooks.json` and
+  `.agents/hooks.json` only hook entries that run an Avenox script are removed (plain or inside
+  a PowerShell `-EncodedCommand`). Your permissions and your own hooks stay.
+- In `CLAUDE.md` and `AGENTS.md` only the `<!-- beyin-v3:start/end -->` block is removed.
+- Any other Avenox file you changed by hand blocks the migration before anything is written.
+- Every touched file is first copied to `<state>/avenox-migration-backup/`, together with the
+  Avenox install manifest. Notes, receipts and the companion folder are never read or moved.
+- Avenox receipts are V3 receipts, so the cutover watermark is cleared and they appear in the
+  generated `daily/v3` and `knowledge/v3/outcomes.md` views. `sync --rebuild-receipts` does the
+  same later for any vault whose older receipts are missing from those views.
+- A generated receipt view (`generated: true`, `kind: receipt-index`) found without a stored
+  hash, as after a state reset, is adopted: the old bytes go to `<state>/receipt-views-backup/`
+  and the projection rewrites it. A view without that marker is still preserved as a conflict.

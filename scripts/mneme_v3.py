@@ -233,7 +233,9 @@ def parser():
     root.add_argument("--state", type=Path, help="Local state directory outside the vault")
     sub = root.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="Initialize local state; installs no hooks or services")
-    sub.add_parser("sync", help="Reconcile Markdown sources into local state")
+    sync_parser = sub.add_parser("sync", help="Reconcile Markdown sources into local state")
+    sync_parser.add_argument("--rebuild-receipts", action="store_true",
+                             help="Also project receipts the V2 cutover marked historical (rewrites only the generated daily/v3 and outcomes views)")
     sub.add_parser("skill-sync", help="Reconcile project-local shared skills")
     sub.add_parser("doctor", help="Read local hook health and pending metadata counts")
     recap = sub.add_parser("recap", help="Read recent source-linked outcomes without a model call")
@@ -275,6 +277,9 @@ def parser():
     ingest.add_argument("--file", default="-", help="JSON input path, or - for stdin")
     note = sub.add_parser("note-create", help="Create a semantic Markdown source without overwriting")
     note.add_argument("--file", default="-", help="JSON {source, text, metadata}")
+    sup = sub.add_parser("supersede", help="Mark an older note as replaced by a newer one; nothing is deleted")
+    sup.add_argument("--new", required=True, help="Newer record id or vault-relative source")
+    sup.add_argument("--old", required=True, help="Older record id or vault-relative source")
     task = sub.add_parser("task-create", help="Create and verify an explicit new task")
     task.add_argument("--file", default="-", help="JSON {source: tasks/name.md, text, metadata: {id,status,owner}}")
     context = sub.add_parser("context", help="Retrieve source-backed shared context")
@@ -336,7 +341,7 @@ def main(argv=None):
         # The advisor switch reads and writes one small file; it needs no index or sync engine.
         engine = load_engine() if args.command != "jev" else None
         store = engine.MemoryStore(state, vault, read_only=read_only_context) if engine else None
-        sync = load_sync()(vault, state) if args.command in ("sync", "recap", "receipt", "task-update", "note-create", "task-create", "context", "jev-review", "jev-answer", "jev-memory", "history") and not read_only_context else None
+        sync = load_sync()(vault, state) if args.command in ("sync", "recap", "receipt", "task-update", "note-create", "supersede", "task-create", "context", "jev-review", "jev-answer", "jev-memory", "history") and not read_only_context else None
         if args.command == "init":
             result = {"initialized": True, "state": str(state), "network": False,
                       "hooks_installed": False, "optional_provider": None}
@@ -558,6 +563,25 @@ def main(argv=None):
                 result['parallel_sessions'] = parallel.doctor(state)
             except Exception as exc:
                 result['parallel_sessions'] = {'status': 'unavailable', 'error': type(exc).__name__}
+            # Name every cause behind needs_attention so the human output never leaves the user guessing.
+            reasons = []
+            sync_health = health.get('sync', {}) or {}
+            if sync_health.get('status') in ('conflict', 'degraded'):
+                items = list(sync_health.get('conflicts') or []) + list(sync_health.get('warnings') or [])
+                reasons.append({'code': 'sync_' + str(sync_health.get('status')), 'count': len(items),
+                                'examples': [{'source': i.get('source') or i.get('id'), 'reason': i.get('reason')}
+                                             for i in items[:3] if isinstance(i, dict)]})
+            if result['skill_conflicts']:
+                reasons.append({'code': 'skill_conflicts', 'names': list(result['skill_conflicts'])})
+            if result.get('instruction_conflicts'):
+                reasons.append({'code': 'instruction_conflicts', 'count': len(result['instruction_conflicts'])})
+            if result['hook-error.json']:
+                reasons.append({'code': 'hook_error'})
+            if result['task_completion']['strict_issue_count'] or result['task_completion'].get('error'):
+                reasons.append({'code': 'task_completion', 'count': result['task_completion']['strict_issue_count']})
+            if result['validity']['ignored_rejection_count'] or result['validity'].get('error'):
+                reasons.append({'code': 'validity', 'count': result['validity']['ignored_rejection_count']})
+            result['attention_reasons'] = reasons
             result['status'] = ('needs_attention' if health.get('sync', {}).get('status') in ('conflict', 'degraded') or result['skill_conflicts'] or result.get('instruction_conflicts') or result['hook-error.json'] or result['task_completion']['strict_issue_count'] or result['task_completion'].get('error') or result['validity']['ignored_rejection_count'] or result['validity'].get('error') else 'pending' if result['pending_events'] else 'observed_metadata' if result['acknowledged_events'] else 'never_seen')
             # Information only: a leftover global OMP hook copy predates the vault-owned plan
             # (OMP.md says the installer never updates or removes it). After an engine update the
@@ -599,7 +623,7 @@ def main(argv=None):
                 # Index the shorter sources and the private archive before anyone reads them.
                 result['sync'] = {'status': load_sync()(vault, state).sync().get('status')}
         elif args.command == "sync":
-            result = sync.sync()
+            result = sync.rebuild_receipts() if args.rebuild_receipts else sync.sync()
         elif args.command == "recap":
             if not 1 <= args.days <= 366 or not 1 <= args.limit <= 100:
                 raise ValueError('recap days must be 1..366 and limit must be 1..100')
@@ -620,6 +644,8 @@ def main(argv=None):
         elif args.command == "note-create":
             payload = read_json(args.file)
             result = sync.note_create(payload['source'], payload['text'], payload.get('metadata'))
+        elif args.command == "supersede":
+            result = sync.supersede(args.new, args.old)
         elif args.command == "task-create":
             payload = read_json(args.file)
             result = sync.task_create(payload['source'], payload['text'], payload['metadata'])

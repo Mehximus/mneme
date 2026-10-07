@@ -223,6 +223,59 @@ def parse(text):
     return metadata, body
 
 
+# Obsidian properties routinely nest deeper than the bounded reader accepts. Rather than
+# dropping the whole note from the index (and marking every sync degraded), the body is
+# indexed with default metadata and the skipped header is reported as a notice. A header
+# that mentions any gate or privacy word anywhere stays excluded with the original warning:
+# ignoring such a key would widen what context may show.
+_LENIENT_REASON = 'unsupported YAML metadata; use JSON frontmatter'
+_GATE_WORDS = re.compile(r'visibility|trust|remote_allowed|sensitiv|private|untrusted|secret|confidential|generated|receipt|\bkind\b|\bstatus\b|supersede|\bid\b', re.IGNORECASE)
+
+
+def parse_lenient(text):
+    """parse(), but a body is still indexed when only the header is beyond the YAML subset.
+
+    Returns (metadata, body, notice_or_None)."""
+    try:
+        metadata, body = parse(text)
+        return metadata, body, None
+    except ValueError as exc:
+        if str(exc) != _LENIENT_REASON:
+            raise
+        lines = text.splitlines(keepends=True)
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == '---'), None)
+        header = ''.join(lines[1:end]) if end is not None else ''
+        if end is None or header.lstrip().startswith('{') or _GATE_WORDS.search(header):
+            raise
+        return {}, ''.join(lines[end + 1:]), 'yaml metadata ignored; body indexed'
+
+
+def _fact_conflicts(records):
+    """Notices for notes that give different values for the same fact key in one project.
+
+    Heuristic and advisory: tasks are skipped (an owner per task is normal) and a record that is
+    already superseded does not count. The agent decides, then runs `supersede`."""
+    replaced = {old for record in records.values() for old in (record.get('supersedes') or [])
+                if isinstance(old, str)}
+    seen = {}
+    for record in records.values():
+        if record.get('kind') not in ('note', 'fact') or record['id'] in replaced or not record.get('project'):
+            continue
+        facts = record.get('facts')
+        if not isinstance(facts, dict):
+            continue
+        for key, value in facts.items():
+            seen.setdefault((record['project'], key), {}).setdefault(json.dumps(value, sort_keys=True), []).append(record['source'])
+    notices = []
+    for (project, key), values in sorted(seen.items()):
+        if len(values) > 1:
+            sources = sorted(source for group in values.values() for source in group)
+            notices.append({'source': sources[0], 'reason': 'fact conflict: ' + project + '/' + key +
+                            ' has ' + str(len(values)) + ' different values in ' + ', '.join(sources[:4]) +
+                            '; run supersede for the outdated note'})
+    return notices
+
+
 def render(metadata, body):
     return '---\n' + json.dumps(metadata, ensure_ascii=False, indent=2) + '\n---\n' + body
 
@@ -430,6 +483,7 @@ class SyncEngine:
 
     def _scan(self):
         records, warnings, conflicts = {}, [], []
+        self._notices = []
         duplicate = set()
         for directory, dirs, files in os.walk(self.root, followlinks=False):
             dirs[:] = sorted(d for d in dirs if not d.startswith('.') and d.casefold() not in EXCLUDED_DIRS and not (Path(directory) / d).is_symlink())
@@ -441,7 +495,9 @@ class SyncEngine:
                 try:
                     self._path(relative, existing=True)
                     raw = path.read_bytes()
-                    metadata, body = parse(raw.decode('utf-8'))
+                    metadata, body, notice = parse_lenient(raw.decode('utf-8'))
+                    if notice:
+                        self._notices.append({'source': relative, 'reason': notice})
                     if metadata.get('kind') == 'task' and body.lstrip().startswith('---'):
                         raise ValueError('task has embedded frontmatter; reconcile metadata and body explicitly')
                     if metadata.get('kind') == 'receipt' or metadata.get('generated') is True:
@@ -457,6 +513,7 @@ class SyncEngine:
                     records[record['id']] = record
                 except (ValueError, OSError, UnicodeError) as exc:
                     warnings.append({'source': relative, 'reason': str(exc)})
+        self._notices.extend(_fact_conflicts(records))
         for id in sorted(duplicate):
             records.pop(id, None)
             conflicts.append({'id': id, 'reason': 'duplicate source id; all copies quarantined'})
@@ -598,7 +655,7 @@ class SyncEngine:
                 db.execute("DELETE FROM metadata WHERE key='receipt_scan_signature'")
         for entry in completed:
             entry.unlink(missing_ok=True)
-        return {'status': 'conflict' if conflicts else 'degraded' if warnings else 'succeeded', 'indexed': len(records), 'deleted': deleted, 'warnings': warnings, 'conflicts': conflicts}
+        return {'status': 'conflict' if conflicts else 'degraded' if warnings else 'succeeded', 'indexed': len(records), 'deleted': deleted, 'warnings': warnings, 'conflicts': conflicts, 'notices': list(getattr(self, '_notices', []))}
 
     def _intent(self, relative, old_hash, content, kind, event=None):
         path = self._path(relative)
@@ -734,6 +791,79 @@ class SyncEngine:
                 'source_sync': {'status': result['status'], 'warnings': result['warnings'],
                                 'conflicts': result['conflicts']}}
 
+    def rebuild_receipts(self):
+        """Project every receipt source again, including those the V2 cutover marked historical.
+
+        Clears the historical_receipts watermark (the old file is kept beside it) and re-syncs.
+        Receipt sources are never touched; only the generated daily/v3 and outcomes views change."""
+        migration = self.state / 'v2-migration.json'
+        cleared = 0
+        if migration.exists():
+            previous = json.loads(migration.read_text(encoding='utf-8'))
+            cleared = len(previous.get('historical_receipts', []))
+            if cleared:
+                backup = migration.with_name('v2-migration.json.before-rebuild')
+                if not backup.exists():
+                    backup.write_bytes(migration.read_bytes())
+                previous['historical_receipts'] = []
+                atomic(migration, _json(previous))
+        with self.store._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute("DELETE FROM metadata WHERE key='receipt_scan_signature'")
+        result = self.sync()
+        return {'status': result['status'], 'watermark_cleared': cleared, 'conflicts': result['conflicts'],
+                'warnings': result['warnings']}
+
+    def supersede(self, new_ref, old_ref):
+        """Mark an older note as replaced by a newer one: the newer source lists the old id.
+
+        Nothing is deleted and the old note stays on disk; retrieval simply stops showing it.
+        Refs are record ids or vault-relative sources. Only a source with JSON frontmatter (or
+        none) is rewritten; a YAML header is refused so the author's header is never reformatted."""
+        with self.store._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+
+            def lookup(ref):
+                for column in ('id', "json_extract(payload, '$.source')"):
+                    row = db.execute('SELECT payload FROM records WHERE ' + column + '=?', (ref,)).fetchone()
+                    if row:
+                        return json.loads(row[0])
+                raise KeyError(ref)
+
+            new, old = lookup(new_ref), lookup(old_ref)
+            if new['id'] == old['id']:
+                raise ValueError('a record cannot supersede itself')
+            if new['kind'] in ('task', 'receipt') or old['kind'] in ('task', 'receipt'):
+                raise ValueError('supersede covers notes and facts; tasks use task-update')
+            if new['id'] in (old.get('supersedes') or []):
+                raise ValueError('cycle: the old record already supersedes the new one')
+            path = self._path(new['source'], existing=True)
+            raw = path.read_bytes()
+            if _hash(raw) != new['source_sha256']:
+                raise RevisionConflict('source changed; sync and reread')
+            text = raw.decode('utf-8')
+            if text.startswith('---') and not text.split('\n', 1)[1].lstrip().startswith('{'):
+                raise ValueError('source uses YAML frontmatter; add supersedes: [' + old['id'] + '] to it by hand')
+            metadata, body = parse(text)
+            current = metadata.get('supersedes', [])
+            current = [current] if isinstance(current, str) else list(current)
+            if old['id'] in current:
+                return {'status': 'unchanged', 'new': new['id'], 'old': old['id'], 'source': new['source']}
+            metadata['supersedes'] = current + [old['id']]
+            metadata.setdefault('id', new['id'])
+            self.store._validate(dict(metadata, source=new['source'], text=body))
+            intended = render(metadata, body)
+            self._intent(new['source'], new['source_sha256'], intended, 'note')
+        result = self.sync()
+        if result['conflicts']:
+            raise RevisionConflict('source projection conflict')
+        with self.store._connect() as db:
+            row = db.execute('SELECT payload FROM records WHERE id=?', (new['id'],)).fetchone()
+        if not row or old['id'] not in (json.loads(row[0]).get('supersedes') or []):
+            raise RevisionConflict('supersede not visible after projection')
+        return {'status': 'succeeded', 'new': new['id'], 'old': old['id'], 'source': new['source'],
+                'old_source': old['source']}
+
     def task_create(self, source, text, metadata):
         if not isinstance(source, str) or not source.startswith('tasks/') or not source.endswith('.md'):
             raise ValueError('task-create source must be a tasks/ Markdown path')
@@ -834,7 +964,10 @@ class SyncEngine:
             else:
                 self._intent(source, None, content, 'receipt', event)
         result = self.sync()
-        if result['conflicts']:
+        # A conflict on a generated view (or any unrelated source) must not discard a receipt that
+        # was written and read back correctly; those are reported by sync and doctor instead.
+        own = [c for c in result['conflicts'] if not (str(c.get('source', '')).startswith('daily/v3/') or c.get('source') == 'knowledge/v3/outcomes.md')]
+        if own:
             raise ReceiptConflict('receipt projection conflict')
         if self._path(source, existing=True).read_bytes() != content.encode('utf-8'):
             raise ReceiptConflict('receipt source changed before readback')

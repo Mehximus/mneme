@@ -21,10 +21,21 @@ PAIRS = (
     ('çatal', 'çatallarda'), ('kitap', 'kitaplar'), ('karar', 'kararı'),
     ('durum', 'durumu'), ('sunucu', 'sunucularda'), ('araba', 'arabanın'),
     ('neden', 'nedenleri'), ('kapı', 'kapısında'), ('orman', 'ormanda'),
+    # Possessive + case chains and the -ki relative suffix (a real miss found on 2026-10-07).
+    ('kelime', 'kelimesini'), ('hafıza', 'hafızasını'), ('salon', 'salonlardaki'),
+    ('masa', 'masadaki'), ('klasör', 'klasördeki'),
+)
+
+# Same stem from several inflections of one root (no retrieval needed to see a regression).
+SAME_STEM = (
+    ('kelime', 'kelimesi', 'kelimesini', 'kelimesine'),
+    ('proje', 'projedeki', 'projelerdeki'),
+    ('ev', 'evdeki'),
 )
 
 # Pairs that must stay apart: a stemmer that merges these turns recall into noise.
 NEGATIVES = (
+    ('banan', 'banane'), ('mas', 'masadaki'),
     ('not', 'nota'), ('kar', 'karar'), ('kara', 'karar'), ('sinem', 'sinema'),
     ('bir', 'birim'), ('kod', 'kodla'), ('gol', 'golden'), ('tab', 'table'),
     ('hand', 'handle'), ('gar', 'garden'), ('sta', 'state'), ('list', 'listen'),
@@ -175,6 +186,14 @@ class LegacyStateTest(VaultTestCase):
         self.addCleanup(lambda: evaluator.close_store(reopened))
         found = reopened.retrieve('dükkanlardaki yayınlar')
         self.assertEqual([item['id'] for item in found['records']], ['eski-kayit'])
+
+
+class StemFamilyTest(unittest.TestCase):
+    def test_inflection_families_share_one_stem(self):
+        module = evaluator.load_runtime()
+        for family in SAME_STEM:
+            stems = {tuple(sorted(module._tokens(word))) for word in family}
+            self.assertEqual(len(stems), 1, family)
 
 
 if __name__ == '__main__':

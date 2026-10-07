@@ -178,7 +178,10 @@ class ReceiptCoverageTest(unittest.TestCase):
 
         # Human rendering test
         human_text = mneme_entry.human_result(doc, 'doctor')
-        self.assertIn('Makbuz kapsami: %50 (1/2 oturum, son 7 gun: %50)', human_text)
+        # Two sessions are too few for a percentage: the human line stays hidden until three exist.
+        self.assertNotIn('Makbuz kapsami', human_text)
+        doc['receipt_coverage'] = dict(cov, total=4, covered=2, ratio=0.5, last_7d={'total': 4, 'covered': 2, 'ratio': 0.5})
+        self.assertIn('Makbuz kapsami: %50 (2/4 oturum, son 7 gun: %50)', mneme_entry.human_result(doc, 'doctor'))
 
     def test_first_prompt_delivered_as_session_start_counts(self):
         """Hermes and OpenCode send the first user prompt as SessionStart; a one-prompt session still counts."""
