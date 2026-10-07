@@ -1,0 +1,168 @@
+{
+ "version": 1,
+ "description": "Küçük Türkçe kişisel vault: ek, uzun belge ve başlık sıralaması.",
+ "records": [
+  {
+   "id": "doc-kelime",
+   "source": "knowledge/beyin-dogrulama-ornegi.md",
+   "title": "Doğrulama kelimesi örneği",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Doğrulama kelimesi örneği\n\nYeni oturumda hafıza doğrulaması: doğrulama kelimesi mavi-ahtapot-7 olarak okundu."
+  },
+  {
+   "id": "doc-plan",
+   "source": "docs/plan-mneme-gocu.md",
+   "title": "Mneme göç planı",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Mneme göç planı\n\nGöç planı. Adımlar: yedek al, kur, doğrula. Bir yerde doğrulama kelimesi de sorulur. detay0 detay1 detay2 detay3 detay4 detay5 detay6 detay7 detay8 detay9 detay10 detay11 detay12 detay13 detay14 detay15 detay16 detay17 detay18 detay19 detay20 detay21 detay22 detay23 detay24 detay25 detay26 detay27 detay28 detay29 detay30 detay31 detay32 detay33 detay34 detay35 detay36 detay37 detay38 detay39 detay40 detay41 detay42 detay43 detay44 detay45 detay46 detay47 detay48 detay49 detay50 detay51 detay52 detay53 detay54 detay55 detay56 detay57 detay58 detay59 detay60 detay61 detay62 detay63 detay64 detay65 detay66 detay67 detay68 detay69 detay70 detay71 detay72 detay73 detay74 detay75 detay76 detay77 detay78 detay79 detay80 detay81 detay82 detay83 detay84 detay85 detay86 detay87 detay88 detay89 detay90 detay91 detay92 detay93 detay94 detay95 detay96 detay97 detay98 detay99 detay100 detay101 detay102 detay103 detay104 detay105 detay106 detay107 detay108 detay109 detay110 detay111 detay112 detay113 detay114 detay115 detay116 detay117 detay118 detay119"
+  },
+  {
+   "id": "doc-kurulum",
+   "source": "knowledge/beyin-kurulumu.md",
+   "title": "Beyin kurulumu",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Beyin kurulumu\n\nMneme 3.7.1 bu vault'a kuruldu. Paket SHA-256 ile doğrulandı."
+  },
+  {
+   "id": "doc-beslenme",
+   "source": "knowledge/beslenme.md",
+   "title": "Beslenme planı",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Beslenme planı\n\nGünlük hedef 2681 kcal ve 227 gram protein. Tavuk çiğ tartılır."
+  },
+  {
+   "id": "doc-antrenman",
+   "source": "knowledge/antrenman.md",
+   "title": "Yağ kaybı bloğu",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Yağ kaybı bloğu\n\nHaftada beş gün ağırlık antrenmanı. Pazartesi ve perşembe dinlenme günleridir."
+  },
+  {
+   "id": "doc-video",
+   "source": "knowledge/mehximus.md",
+   "title": "MEHXIMUS videoları",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# MEHXIMUS videoları\n\nRoma tarihi videoları. Maskot somurtkan büst. İlk üç saniyede bomba bilgi verilir."
+  },
+  {
+   "id": "doc-dashboard",
+   "source": "knowledge/dashboard.md",
+   "title": "Hevy panosu",
+   "kind": "note",
+   "updated_at": "2026-10-05T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Hevy panosu\n\nPanoda salon bazlı ilerleme ve 1RM hesaplanır. Beylikdüzü ve Fatih salonları ayrıdır."
+  },
+  {
+   "id": "doc-daily",
+   "source": "daily/2026-10-06.md",
+   "title": "Günlük 6 Ekim",
+   "kind": "note",
+   "updated_at": "2026-10-06T10:00:00Z",
+   "visibility": "internal",
+   "facts": {},
+   "text": "# Günlük 6 Ekim\n\nBugün beslenme, antrenman, video, pano ve kurulum işleriyle uğraştık. detay0 detay1 detay2 detay3 detay4 detay5 detay6 detay7 detay8 detay9 detay10 detay11 detay12 detay13 detay14 detay15 detay16 detay17 detay18 detay19 detay20 detay21 detay22 detay23 detay24 detay25 detay26 detay27 detay28 detay29 detay30 detay31 detay32 detay33 detay34 detay35 detay36 detay37 detay38 detay39 detay40 detay41 detay42 detay43 detay44 detay45 detay46 detay47 detay48 detay49 detay50 detay51 detay52 detay53 detay54 detay55 detay56 detay57 detay58 detay59 detay60 detay61 detay62 detay63 detay64 detay65 detay66 detay67 detay68 detay69 detay70 detay71 detay72 detay73 detay74 detay75 detay76 detay77 detay78 detay79 detay80 detay81 detay82 detay83 detay84 detay85 detay86 detay87 detay88 detay89 detay90 detay91 detay92 detay93 detay94 detay95 detay96 detay97 detay98 detay99 detay100 detay101 detay102 detay103 detay104 detay105 detay106 detay107 detay108 detay109 detay110 detay111 detay112 detay113 detay114 detay115 detay116 detay117 detay118 detay119"
+  }
+ ],
+ "cases": [
+  {
+   "id": "tr-01",
+   "category": "rare_vs_common",
+   "query": "doğrulama kelimesi nedir",
+   "target_id": "doc-kelime",
+   "target_source": "knowledge/beyin-dogrulama-ornegi.md",
+   "description": "doğrulama kelimesi nedir"
+  },
+  {
+   "id": "tr-02",
+   "category": "turkish_suffix",
+   "query": "doğrulama kelimesini hatırla",
+   "target_id": "doc-kelime",
+   "target_source": "knowledge/beyin-dogrulama-ornegi.md",
+   "description": "doğrulama kelimesini hatırla"
+  },
+  {
+   "id": "tr-03",
+   "category": "title_salience",
+   "query": "mneme göç planı adımları",
+   "target_id": "doc-plan",
+   "target_source": "docs/plan-mneme-gocu.md",
+   "description": "mneme göç planı adımları"
+  },
+  {
+   "id": "tr-04",
+   "category": "turkish_suffix",
+   "query": "beyin nasıl kuruldu",
+   "target_id": "doc-kurulum",
+   "target_source": "knowledge/beyin-kurulumu.md",
+   "description": "beyin nasıl kuruldu"
+  },
+  {
+   "id": "tr-05",
+   "category": "clean_baseline",
+   "query": "günlük protein hedefi kaç gram",
+   "target_id": "doc-beslenme",
+   "target_source": "knowledge/beslenme.md",
+   "description": "günlük protein hedefi kaç gram"
+  },
+  {
+   "id": "tr-06",
+   "category": "turkish_suffix",
+   "query": "tavuğu çiğ mi tartıyorum",
+   "target_id": "doc-beslenme",
+   "target_source": "knowledge/beslenme.md",
+   "description": "tavuğu çiğ mi tartıyorum"
+  },
+  {
+   "id": "tr-07",
+   "category": "clean_baseline",
+   "query": "hangi günler dinlenme",
+   "target_id": "doc-antrenman",
+   "target_source": "knowledge/antrenman.md",
+   "description": "hangi günler dinlenme"
+  },
+  {
+   "id": "tr-08",
+   "category": "turkish_suffix",
+   "query": "videoların ilk üç saniyesi",
+   "target_id": "doc-video",
+   "target_source": "knowledge/mehximus.md",
+   "description": "videoların ilk üç saniyesi"
+  },
+  {
+   "id": "tr-09",
+   "category": "turkish_suffix",
+   "query": "fatih salonundaki ilerleme",
+   "target_id": "doc-dashboard",
+   "target_source": "knowledge/dashboard.md",
+   "description": "fatih salonundaki ilerleme"
+  },
+  {
+   "id": "tr-10",
+   "category": "turkish_suffix",
+   "query": "pazartesideki antrenman",
+   "target_id": "doc-antrenman",
+   "target_source": "knowledge/antrenman.md",
+   "description": "pazartesideki antrenman"
+  }
+ ]
+}
