@@ -8,6 +8,8 @@ Python **3.11 veya üzeri** yeterli. Git, pip, Mem0 hesabı, API anahtarı veya 
 
 ## En kolay kurulum: bir klasör, bir mesaj
 
+> İlk kez mi kuruyorsun? Obsidian indirmeden başlayan adım adım rehber: **[KURULUM.md](KURULUM.md)**
+
 1. Obsidian'da yeni bir vault oluştur veya mevcut vault klasörünü seç.
 2. Bu klasörü Codex, Claude Code veya Antigravity ile aç.
 3. Aşağıdaki mesajı yapıştır:
