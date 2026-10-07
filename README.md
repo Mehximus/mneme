@@ -1,5 +1,9 @@
 # 🧠 Mneme
 
+[![Mneme tanıtım videosu](https://img.youtube.com/vi/weSUupkkIJ8/maxresdefault.jpg)](https://youtu.be/weSUupkkIJ8)
+
+▶️ **[Tanıtım videosunu izle](https://youtu.be/weSUupkkIJ8)** (73 sn)
+
 Claude Code, Codex veya Google Antigravity ile kullanabileceğin yerel ikinci beyin. Notların Markdown dosyalarında kalır; bir istemcide kaydettiğin kaynak ve iş sonucu diğerinde de bulunabilir. Obsidian ile açabilir, normal bir metin editörüyle düzenleyebilirsin.
 
 Python **3.11 veya üzeri** yeterli. Git, pip, Mem0 hesabı, API anahtarı veya sürekli açık sunucu gerekmez. Kullandığın AI istemcisinin kendi kurulumu ve hesabı ayrı olarak gerekir.
