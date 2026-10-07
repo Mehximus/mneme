@@ -8,7 +8,7 @@ Claude Code, Codex veya Google Antigravity ile kullanabileceğin yerel ikinci be
 
 Python **3.11 veya üzeri** yeterli. Git, pip, Mem0 hesabı, API anahtarı veya sürekli açık sunucu gerekmez. Kullandığın AI istemcisinin kendi kurulumu ve hesabı ayrı olarak gerekir.
 
-> **V3.9.0:** Arama sıralaması artık kısa ve konuyla ilgili notu öne alıyor (BM25 tarzı; Türkçe testte ilk sırada doğru not %70 → %100). Yeni `note-edit` komutu ve `mneme.py mcp` ile Claude Desktop, Cursor gibi hook'suz istemciler de Mneme'yi kullanabiliyor. Avenox'tan geçiş için `install_v3.py --from-avenox`. Mevcut kurulumda vault içinde `python3 mneme.py update` çalıştır. [Sürüm notları](docs/v3/releases/3.9.0.md) · [MCP rehberi](docs/v3/MCP.md) · [Güncelleme rehberi](docs/v3/UPDATE.md).
+> **V3.9.0:** Arama sıralaması artık kısa ve konuyla ilgili notu öne alıyor (BM25 tarzı; Türkçe testte ilk sırada doğru not %70 → %100). Yeni `note-edit` komutu ve `mneme.py mcp` ile Claude Desktop, Cursor gibi hook'suz istemciler de Mneme'yi kullanabiliyor. Mevcut kurulumda vault içinde `python3 mneme.py update` çalıştır. [Sürüm notları](docs/v3/releases/3.9.0.md) · [MCP rehberi](docs/v3/MCP.md) · [Güncelleme rehberi](docs/v3/UPDATE.md).
 
 ## En kolay kurulum: bir klasör, bir mesaj
 
