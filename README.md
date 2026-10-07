@@ -1,6 +1,6 @@
 # 🧠 Mneme
 
-[![Mneme tanıtım videosu](https://img.youtube.com/vi/weSUupkkIJ8/maxresdefault.jpg)](https://youtu.be/weSUupkkIJ8)
+[![Mneme tanıtım videosu](docs/img/banner.png)](https://youtu.be/weSUupkkIJ8)
 
 ▶️ **[Tanıtım videosunu izle](https://youtu.be/weSUupkkIJ8)** (73 sn)
 
