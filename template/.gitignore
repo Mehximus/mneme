@@ -1,0 +1,21 @@
+# Secrets, never commit. assert_no_secret_staged in scripts/upgrade.sh refuses to commit
+# these paths, so anything it guards must also be ignored here, otherwise the very first
+# snapshot stages a secret and the upgrade dies before it starts.
+.claude/settings.local.json
+.env
+*.yedek
+*.yedek-*
+*.bak
+*.orig
+
+# Local runtime state
+.claude/hooks/.state/
+.claude/scripts/.state/*
+!.claude/scripts/.state/.gitkeep
+
+# OS / editor noise
+.DS_Store
+.obsidian/workspace*
+.obsidian/cache
+__pycache__/
+*.pyc
